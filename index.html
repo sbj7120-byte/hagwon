@@ -303,19 +303,19 @@ button{cursor:pointer}
     <div class="xlgrid">
       <section class="panel">
         <h2>가족에게 보내기</h2>
-        <p class="hint" style="margin-top:0">배우자 휴대폰으로 일정을 옮길 때 써요. 공유 코드를 만들어 카카오톡이나 문자로 보내면 돼요. 코드 안에 일정이 그대로 담겨 있으니 가족에게만 보내 주세요.</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button type="button" class="btn primary" id="mkCode">공유 코드 만들기</button></div>
+        <p class="hint" style="margin-top:0">배우자 휴대폰으로 일정을 옮길 때 써요. 공유 링크를 만들어 카카오톡이나 문자로 보내면, 받는 사람은 링크를 누르기만 하면 돼요. 링크 안에 일정이 그대로 담겨 있으니 가족에게만 보내 주세요.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button type="button" class="btn primary" id="mkCode">공유 링크 만들기</button></div>
         <div id="codeOut" hidden style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
-          <textarea id="codeTxt" readonly rows="3" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--bg);font-size:12px;word-break:break-all;color:var(--ink)"></textarea>
-          <div style="display:flex;gap:8px"><button type="button" class="btn" id="copyCode2">복사</button><button type="button" class="btn" id="shareCode" hidden>바로 보내기</button></div>
+          <textarea id="codeTxt" readonly rows="2" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--bg);font-size:12px;word-break:break-all;color:var(--ink)"></textarea>
+          <div style="display:flex;gap:8px"><button type="button" class="btn" id="copyCode2">링크 복사</button><button type="button" class="btn" id="shareCode" hidden>바로 보내기</button></div>
         </div>
         <p class="hint" id="codeMsg"></p>
       </section>
       <section class="panel">
-        <h2>받은 코드 넣기</h2>
-        <p class="hint" style="margin-top:0">가족이 보낸 공유 코드를 붙여 넣으세요. 넣기 전에 무엇이 들어올지 먼저 보여드려요.</p>
-        <textarea id="inCode" rows="3" placeholder="HG1.로 시작하는 코드" style="width:100%;margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--bg);font-size:12px;word-break:break-all;color:var(--ink)"></textarea>
-        <div style="display:flex;justify-content:flex-end;margin-top:8px"><button type="button" class="btn primary" id="readCode">코드 읽기</button></div>
+        <h2>받은 링크 넣기</h2>
+        <p class="hint" style="margin-top:0">보통은 받은 링크를 누르면 자동으로 열려요. 링크가 잘 안 열리면 여기에 붙여 넣으세요.</p>
+        <textarea id="inCode" rows="3" placeholder="받은 링크 붙여 넣기" style="width:100%;margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--bg);font-size:12px;word-break:break-all;color:var(--ink)"></textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:8px"><button type="button" class="btn primary" id="readCode">링크 읽기</button></div>
         <div id="codePrev"></div>
       </section>
       <section class="panel">
@@ -1390,21 +1390,44 @@ const b64 = { enc(u8){ let s=''; for (let i=0;i<u8.length;i+=0x8000) s+=String.f
               dec(t){ t=t.replace(/-/g,'+').replace(/_/g,'/'); while(t.length%4) t+='='; const s=atob(t); const u=new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i); return u; } };
 async function pipe(u8, Stream, mode){ const r = new Blob([u8]).stream().pipeThrough(new Stream(mode)); return new Uint8Array(await new Response(r).arrayBuffer()); }
 const strip = x => { const { id, updatedAt, ...rest } = x; return rest; };
+// 짧게 만들기: 필드 이름을 빼고 배열로, 요일은 비트, 시간은 분, 학원비는 천원 단위
+const dm = ds => (ds||[]).reduce((m,d)=>m|(1<<d),0);
+const md = m => [0,1,2,3,4,5,6].filter(d=>m&(1<<d));
+const tm = t => t ? toMin(t) : '';
+const mt = m => m===''||m==null ? '' : fromMin(m);
+const trim = a => { while (a.length && (a[a.length-1]===''||a[a.length-1]==null||a[a.length-1]===0&&false)) a.pop(); return a; };
+function pack(){
+  const kids = state.children, ix = Object.fromEntries(kids.map((k,i)=>[k.id,i]));
+  return [2,
+    kids.map(k=>[k.name,k.color]),
+    state.items.filter(x=>ix[x.child]!==undefined).map(x=>trim([ix[x.child], x.name, dm(x.days), tm(x.start), tm(x.end), x.status==='maybe'?1:0, x.fee?Math.round(x.fee/1000):'', x.since||'', x.memo||'', x.example?1:''])),
+    state.hist.filter(x=>ix[x.child]!==undefined).map(x=>trim([ix[x.child], x.name, x.from||'', x.to||'', dm(x.days), tm(x.start), tm(x.end), x.fee?Math.round(x.fee/1000):'', x.reason||'', x.memo||'']))];
+}
+function unpack(a){
+  if (!Array.isArray(a) || a[0]!==2) throw new Error('form');
+  const children = a[1].map((k,i)=>({ id: i===0?'c1':i===1?'c2':'k'+i+Math.random().toString(36).slice(2,6), name:String(k[0]), color:+k[1]||0 }));
+  const cid = i => children[i] ? children[i].id : null;
+  const fee = v => v===''||v==null ? null : v*1000;
+  const items = a[2].map(r=>({ child:cid(r[0]), name:String(r[1]||''), days:md(r[2]||0), start:mt(r[3]), end:mt(r[4]), status:r[5]?'maybe':'fixed', fee:fee(r[6]), since:r[7]||'', memo:r[8]||'', example:!!r[9] })).filter(x=>x.child&&x.start&&x.end);
+  const hist = a[3].map(r=>({ child:cid(r[0]), name:String(r[1]||''), from:r[2]||'', to:r[3]||'', days:md(r[4]||0), start:mt(r[5]), end:mt(r[6]), fee:fee(r[7]), reason:r[8]||'', memo:r[9]||'' })).filter(x=>x.child);
+  return { children, items, hist };
+}
 async function makeCode(){
-  const payload = { v:1, children: state.children, items: state.items.map(strip), hist: state.hist.map(strip) };
-  const raw = new TextEncoder().encode(JSON.stringify(payload));
-  if (typeof CompressionStream === 'function') { try { return 'HG1.' + b64.enc(await pipe(raw, CompressionStream, 'deflate-raw')); } catch {} }
-  return 'HG0.' + b64.enc(raw);
+  const raw = new TextEncoder().encode(JSON.stringify(pack()));
+  if (typeof CompressionStream === 'function') { try { return 'HG2.' + b64.enc(await pipe(raw, CompressionStream, 'deflate-raw')); } catch {} }
+  return 'HG3.' + b64.enc(raw);
 }
 async function readCode(text){
   const t = String(text).replace(/\s+/g,'');
-  const m = t.match(/HG([01])\.([A-Za-z0-9_-]+)/); if (!m) throw new Error('form');
+  const m = t.match(/HG([0-3])\.([A-Za-z0-9_-]+)/); if (!m) throw new Error('form');
   let u8 = b64.dec(m[2]);
-  if (m[1] === '1') { if (typeof DecompressionStream !== 'function') throw new Error('old'); u8 = await pipe(u8, DecompressionStream, 'deflate-raw'); }
-  const p = JSON.parse(new TextDecoder().decode(u8));
+  if (m[1] === '1' || m[1] === '2') { if (typeof DecompressionStream !== 'function') throw new Error('old'); u8 = await pipe(u8, DecompressionStream, 'deflate-raw'); }
+  const j = JSON.parse(new TextDecoder().decode(u8));
+  const p = (m[1] === '2' || m[1] === '3') ? unpack(j) : j;
   if (!p || !validKids(p.children) || !Array.isArray(p.items) || !Array.isArray(p.hist)) throw new Error('form');
   return p;
 }
+const appUrl = () => location.origin + location.pathname;
 function mergePlan(p){
   // 자녀는 이름으로 맞추고, 없는 이름은 새로 추가
   const list = state.children.map(k => ({ ...k })), used = new Set(list.map(k => k.color)), map = {};
@@ -1425,30 +1448,31 @@ function mergePlan(p){
 const newId = () => 'l' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
 
 $('mkCode').addEventListener('click', async () => {
-  if (!state.items.length && !state.hist.length) { $('codeOut').hidden = true; $('codeMsg').textContent = '보낼 일정이 아직 없어요.'; return; }
+  if (!state.items.length && !state.hist.length) { $('codeOut').hidden = true; $('codeMsg').innerHTML = '보낼 일정이 아직 없어요. 먼저 <button type="button" class="btn" id="goTT" style="padding:2px 10px;font-size:12px">이번 주 시간표</button>에서 학원을 넣어 주세요.'; return; }
   const code = await makeCode();
-  $('codeTxt').value = code; $('codeOut').hidden = false;
-  $('codeMsg').textContent = `학원 ${state.items.length}개, 지난 기록 ${state.hist.length}개가 담겼어요. 받는 사람이 이 앱의 ‘받은 코드 넣기’에 붙여 넣으면 돼요.`;
+  $('codeTxt').value = appUrl() + '#' + code; $('codeOut').hidden = false;
+  $('codeMsg').textContent = `학원 ${state.items.length}개, 지난 기록 ${state.hist.length}개가 담긴 링크예요. 받는 사람은 링크를 누르기만 하면 돼요.`;
   $('shareCode').hidden = !navigator.share;
   markBackup();
 });
+document.addEventListener('click', e => { if (e.target.id === 'goTT') { state.page = 'tt'; render(); scrollTo(0,0); } });
 $('copyCode2').addEventListener('click', async () => {
   const t = $('codeTxt');
-  try { await navigator.clipboard.writeText(t.value); toast('공유 코드를 복사했어요'); }
+  try { await navigator.clipboard.writeText(t.value); toast('공유 링크를 복사했어요'); }
   catch { t.focus(); t.select(); toast('코드를 선택했어요. 복사해서 보내 주세요'); }
 });
 $('shareCode').addEventListener('click', async () => {
-  try { await navigator.share({ title: '학원 시간표 공유 코드', text: $('codeTxt').value }); } catch {}
+  try { await navigator.share({ title: '우리집 학원 시간표', text: '학원 시간표를 보냈어요. 링크를 누르면 내 앱에 넣을 수 있어요.', url: $('codeTxt').value }); } catch {}
 });
 let codePending = null;
 $('inCode').addEventListener('input', () => { codePending = null; $('codePrev').innerHTML = ''; });
 $('readCode').addEventListener('click', async () => {
   let p;
   try { p = await readCode($('inCode').value); }
-  catch (e) { $('codePrev').innerHTML = `<p class="hint" style="color:var(--bad)">${e.message === 'old' ? '이 브라우저는 코드를 풀 수 없어요. 최신 크롬이나 사파리에서 열어 주세요.' : '공유 코드를 읽지 못했어요. HG로 시작하는 코드 전체를 빠짐없이 붙여 넣어 주세요.'}</p>`; return; }
+  catch (e) { $('codePrev').innerHTML = `<p class="hint" style="color:var(--bad)">${e.message === 'old' ? '이 브라우저는 코드를 풀 수 없어요. 최신 크롬이나 사파리에서 열어 주세요.' : '공유 링크를 읽지 못했어요. 받은 링크 전체를 빠짐없이 붙여 넣어 주세요.'}</p>`; return; }
   const plan = mergePlan(p); codePending = { p, plan };
   $('codePrev').innerHTML = `<div class="imp">
-    <div>받은 코드: 학원 <b>${p.items.length}</b>개 · 지난 기록 <b>${p.hist.length}</b>개 · 자녀 ${p.children.map(k => esc(k.name)).join(', ')}</div>
+    <div>받은 일정: 학원 <b>${p.items.length}</b>개 · 지난 기록 <b>${p.hist.length}</b>개 · 자녀 ${p.children.map(k => esc(k.name)).join(', ')}</div>
     <div><b>합치기</b>: 새 학원 ${plan.items.length}개, 지난 기록 ${plan.hist.length}개를 더해요.${plan.skipped ? ` <span class="muted">이미 있는 ${plan.skipped}개는 건너뛰어요.</span>` : ''}${plan.added.length ? ` 새 자녀 <b>${plan.added.map(esc).join(', ')}</b>도 추가해요.` : ''}</div>
     <div class="muted">자녀는 이름으로 맞춰요. 이름이 다르면 다른 아이로 들어가니, 두 기기의 자녀 이름을 똑같이 맞춰 두면 좋아요.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn primary" id="codeMerge">합치기</button><button type="button" class="btn danger" id="codeReplace">내 것 지우고 받은 것으로 바꾸기</button></div></div>`;
@@ -1476,6 +1500,19 @@ document.addEventListener('click', e => {
     render(); toast('받은 일정으로 바꿨어요');
   }
 });
+
+// 공유 링크로 열었을 때: 바로 미리보기
+function fromHash(){
+  const h = location.hash; if (!/HG[0-3]\./.test(h)) return;
+  history.replaceState(null, '', location.pathname + location.search);
+  state.page = 'xl'; render();
+  $('inCode').value = h.slice(1);
+  showBanner('가족이 보낸 학원 시간표가 있어요. 아래에서 확인하고 합치기를 눌러 주세요.');
+  $('readCode').click();
+  setTimeout(() => $('inCode').scrollIntoView({ block: 'center' }), 50);
+}
+window.addEventListener('hashchange', fromHash);
+setTimeout(fromHash, 0);
 
 const baseRender = render; render = function(){ baseRender(); renderBackup(); };
 render();
